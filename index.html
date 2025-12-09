@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfect Loop Carousel</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1a1a1a;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
+
+        .carousel-container {
+            width: 100%;
+            height: 90vh; /* 90% Viewport Height */
+            overflow: hidden;
+            background: #000;
+            position: relative;
+            cursor: grab;
+            border-top: 1px solid #333;
+            border-bottom: 1px solid #333;
+            
+            /* Hide the carousel until images are loaded to prevent "pop in" */
+            opacity: 0; 
+            transition: opacity 0.5s ease;
+        }
+
+        .carousel-container.loaded {
+            opacity: 1;
+        }
+
+        .carousel-container:active {
+            cursor: grabbing;
+        }
+
+        .carousel-track {
+            display: flex;
+            height: 100%;
+            width: max-content;
+            user-select: none;
+            will-change: transform;
+            align-items: center;
+        }
+
+        .carousel-item {
+            height: 100%;
+            width: auto;
+            padding: 0 10px;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .carousel-item img {
+            height: 100%;
+            width: auto;
+            object-fit: contain;
+            border-radius: 4px;
+            pointer-events: none;
+            display: block;
+        }
+        
+        /* Loading Text */
+        #loader {
+            position: absolute;
+            color: white;
+            font-size: 24px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loader">Loading Images...</div>
+
+    <div class="carousel-container">
+        <div class="carousel-track">
+            </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        // Ensure all your 31 files are listed here
+        const imageFiles = [
+            './image/DR00012.png',
+            './image/DR00042.png',
+            './image/DR00103.png',
+            './image/DR00351.png',
+            './image/DR00257.png',
+            './image/DR00297.png',
+            './image/DR00238.png',
+            './image/DR00333.png',
+            './image/TE00043.png',
+            './image/TE00010.png',
+            './image/TE00056.png',
+            './image/TE00062.png',
+            './image/PH00030.png',
+            './image/NU00039.png',
+            './image/NU00117.png',
+            './image/NU00141.png',
+            './image/NU00246.png',
+            './image/NU00266.png',
+            './image/NU00264.png',
+            './image/NU00031.png',
+            './image/NU00271.png',
+            './image/NU00320.png',
+            './image/NA00035.png',
+            './image/NU00342.png',
+            './image/NU00010.png',
+            './image/NU00074.png',
+            './image/AD00102.png',
+            './image/PA00083.png',
+            './image/SE00071.png',
+            './image/KE00054.png'
+
+            // Add your 31st image here if missing
+        ];
+
+        const speed = 0.25; 
+        const dragSpeed = 1.5;
+        // ---------------------
+
+        const track = document.querySelector('.carousel-track');
+        const container = document.querySelector('.carousel-container');
+        const loader = document.getElementById('loader');
+
+        // 1. Prepare HTML structure (Duplicate 3 times)
+        const allImages = [...imageFiles, ...imageFiles, ...imageFiles]; 
+        
+        // We will store the image Promises here
+        const imageLoadPromises = [];
+
+        allImages.forEach(src => {
+            const div = document.createElement('div');
+            div.className = 'carousel-item';
+            
+            const img = document.createElement('img');
+            img.src = src;
+            img.alt = src;
+            
+            // Create a Promise that resolves when this specific image loads
+            const p = new Promise((resolve) => {
+                img.onload = () => resolve();
+                img.onerror = () => resolve(); // Resolve even on error so one bad link doesn't break the app
+            });
+            imageLoadPromises.push(p);
+
+            div.appendChild(img);
+            track.appendChild(div);
+        });
+
+        // 2. State Variables
+        let currentPosition = 0;
+        let isDragging = false;
+        let lastMouseX = 0;
+        let isPaused = false;
+        let resumeTimeout;
+        let singleSetWidth = 0;
+
+        // 3. WAIT for all images to fully load before measuring
+        Promise.all(imageLoadPromises).then(() => {
+            // Remove Loader, Show Carousel
+            loader.style.display = 'none';
+            container.classList.add('loaded');
+
+            // NOW we calculate. The images are rendered and have dimensions.
+            calculateDimensions();
+
+            // Start Animation
+            requestAnimationFrame(animate);
+        });
+
+        function calculateDimensions() {
+            const items = document.querySelectorAll('.carousel-item');
+            singleSetWidth = 0;
+            
+            // Sum width of the first set only
+            // We use getBoundingClientRect().width for sub-pixel precision (floating point numbers)
+            // instead of offsetWidth (integers) to prevent drift over long distances.
+            for(let i = 0; i < imageFiles.length; i++) {
+                singleSetWidth += items[i].getBoundingClientRect().width;
+            }
+            console.log("Calculated Single Set Width:", singleSetWidth);
+        }
+
+        // Recalculate if user resizes window (as image widths will change)
+        window.addEventListener('resize', calculateDimensions);
+
+        // 4. Animation Loop
+        function animate() {
+            if (!isDragging && !isPaused) {
+                currentPosition -= speed;
+            }
+
+            // Infinite Loop Logic
+            // If we scrolled past the first set width
+            if (currentPosition <= -singleSetWidth) {
+                // We add the width to snap back to start (conceptually)
+                // But because we have 3 sets, this snaps us to the "middle" set seamlessly
+                currentPosition += singleSetWidth;
+            }
+            // If we dragged to the right past 0
+            else if (currentPosition > 0) {
+                currentPosition -= singleSetWidth;
+            }
+
+            track.style.transform = `translateX(${currentPosition}px)`;
+            requestAnimationFrame(animate);
+        }
+
+        // 5. Drag Logic (Delta based)
+        const handleStart = (x) => {
+            isDragging = true;
+            lastMouseX = x;
+            clearTimeout(resumeTimeout);
+            isPaused = true; 
+        };
+
+        const handleMove = (x) => {
+            if (!isDragging) return;
+            const deltaX = x - lastMouseX;
+            currentPosition += (deltaX * dragSpeed);
+            lastMouseX = x;
+        };
+
+        const handleEnd = () => {
+            if(!isDragging) return;
+            isDragging = false;
+            isPaused = true; 
+            clearTimeout(resumeTimeout);
+            resumeTimeout = setTimeout(() => {
+                isPaused = false;
+            }, 3000);
+        };
+
+        // Event Listeners
+        container.addEventListener('mousedown', e => handleStart(e.pageX));
+        container.addEventListener('mousemove', e => handleMove(e.pageX));
+        container.addEventListener('mouseup', handleEnd);
+        container.addEventListener('mouseleave', handleEnd);
+
+        container.addEventListener('touchstart', e => handleStart(e.touches[0].pageX));
+        container.addEventListener('touchmove', e => handleMove(e.touches[0].pageX));
+        container.addEventListener('touchend', handleEnd);
+
+    </script>
+</body>
+</html>
